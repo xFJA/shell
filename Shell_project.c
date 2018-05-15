@@ -161,11 +161,15 @@ int main(void)
 
 			printf("Foreground pid: %d,command: %s, status: %s,info: %d\n",pid_fork,args[0],status_strings[status_res],info);
 			fflush(stdout);
-/*
+
+			/* Adding suspended job to jobList */
 			if(status_res==SUSPENDED){
-				printf("Suspending job with pid: %d\n",pid_wait);
-				fflush(stdout);
+				block_SIGCHLD();
+				job * newJob = new_job(pid_fork, args[0], STOPPED);
+				add_job(jobList, newJob);
+				unblock_SIGCHLD();
 			}
+			/*
 			if(info!=1){
 				printf("Foreground pid: %d,command: %s, status: %s,info: %d\n",pid_fork,args[0],status_strings[status_res],info);
 				fflush(stdout);
@@ -177,8 +181,8 @@ int main(void)
 			fflush(stdout);
 
 			/* Adding job to the list */
-			job * newJob = new_job(pid_fork, args[0], BACKGROUND);
 			block_SIGCHLD();
+			job * newJob = new_job(pid_fork, args[0], BACKGROUND);
 			add_job(jobList, newJob);
 			unblock_SIGCHLD();
 
