@@ -122,14 +122,52 @@ int main(void)
 			}
 			continue;
 		}
-		/* JOBS COMMAND */
+
+		/* JOBS COMMAND : show job list */
 		if(!strcmp(args[0], "jobs")){
+			block_SIGCHLD();
 			if(empty_list(jobList)){
 				printf("ERROR: EMPTY LIST\n");
 			}
 			else{
 				print_job_list(jobList);
 			}
+			unblock_SIGCHLD();
+			continue;
+		}
+
+		/* FG COMMAND: change a job from suspended or stopped to foreground */
+		if(!strcmp(args[0], "fg")){
+			block_SIGCHLD();
+			job * fgJob;
+			int fg_pid;
+			int fg_status;
+			int fg_info;
+			enum status fg_status_res;
+
+			if(args[1]!=NULL){ //command has an argument
+				fgJob = get_item_bypos(jobList, args[1]);
+			}
+			else{ //first job from the list chosen
+				fgJob = get_item_bypos(jobList, 1);
+			}
+			fg_pid = fgJob->pgid;
+			fgJob->state = FOREGROUND;
+			killpg(fg_pid, SIGCONT); //send signal to group to continue
+			set_terminal(fg_pid); //give terminal control to the job
+			int k = waitpid(fg_pid, &fg_status, WUNTRACED);
+			printf("%d\n",k );
+			set_terminal(getpid());
+			fg_status_res = analyze_status(fg_status, &fg_info);
+
+			printf("Foreground pid: %d,command: %s, status: %s,info: %d\n",fg_pid,fgJob->command,status_strings[fg_status_res],fg_info);
+			fflush(stdout);
+
+			if(fg_status_res==SUSPENDED){ //change state if job is suspended
+				fgJob->state = STOPPED;
+			}
+
+			unblock_SIGCHLD();
 			continue;
 		}
 
