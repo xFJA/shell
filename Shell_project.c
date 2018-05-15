@@ -56,15 +56,15 @@ void handler(int signum){
 		if(pid_aux==current->pgid){ //child found
 			status_res_aux = analyze_status(status_aux, &info_aux);
 			if(status_res_aux==CONTINUED){
-				printf("Resuming job with pid: %d,command: %s\n",pid_aux, current->command);
+				printf("Resuming job with pid: %d, command: %s\n",pid_aux, current->command);
 				current->state = BACKGROUND;
 			}
 			else if(status_res_aux==SUSPENDED){
-				printf("Suspending job with pid: %dcommand: %s\n",pid_aux, current->command);
+				printf("Suspending job with pid: %d, command: %s\n",pid_aux, current->command);
 				current->state = STOPPED;
 			}
 			else {//EXITED OR SIGNALED
-				printf("Removing job with pid:  %dcommand: %s\n",pid_aux, current->command);
+				printf("Removing job with pid:  %d, command: %s\n",pid_aux, current->command);
 				delete_job(jobList, current);
 			}
 		}
@@ -110,13 +110,25 @@ int main(void)
 		get_command(inputBuffer, MAX_LINE, args, &background);  /* get next command */
 		if(args[0]==NULL) continue;   // if empty command
 
+		/* CD COMMAND */
 		if(!strcmp(args[0], "cd")){
 			if (args[1] != NULL) {
 				if (chdir(args[1])) {
 					printf("Path is not valid\n"); //chdir(args[1]) != 0
+					fflush(stdout);
 				}
 			} else {
 				chdir(getenv("HOME"));//Return home route
+			}
+			continue;
+		}
+		/* JOBS COMMAND */
+		if(!strcmp(args[0], "jobs")){
+			if(empty_list(jobList)){
+				printf("ERROR: EMPTY LIST\n");
+			}
+			else{
+				print_job_list(jobList);
 			}
 			continue;
 		}
