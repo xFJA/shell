@@ -18,6 +18,8 @@ To compile and run the program:
 #include <string.h>
 #include <unistd.h>
 
+job * jobList; /* declaration of job list */
+
 #define MAX_LINE 256 /* 256 chars per line, per command, should be enough. */
 
 #define ANSI_COLOR_RED "\x1b[31m"
@@ -33,6 +35,46 @@ To compile and run the program:
 #define ANSI_COLOR_CYAN "\x1b[36m"
 
 #define ANSI_COLOR_RESET "\x1b[0m"
+
+// -----------------------------------------------------------------------
+//                            HANDLER
+// -----------------------------------------------------------------------
+
+void handler(int signum){
+	int pid_aux;
+	int info_aux;
+	enum status status_res_aux;
+	int status_aux;
+	job * current = jobList;
+
+	/* Iterate entire list until find job */
+
+	block_SIGCHLD();
+	while(current!=NULL){
+		pid_aux = waitpid(current->pgid,&status_aux, WUNTRACED | WNOHANG | WCONTINUED);
+
+		if(pid_aux==current->pgid){ //child found
+			status_res_aux = analyze_status(status_aux, &info_aux);
+			if(status_res_aux==CONTINUED){
+				printf("Resuming job with pid: %d,command: %s\n",pid_aux, current->command);
+				current->state = BACKGROUND;
+			}
+			else if(status_res_aux==SUSPENDED){
+				printf("Suspending job with pid: %dcommand: %s\n",pid_aux, current->command);
+				current->state = STOPPED;
+			}
+			else {//EXITED OR SIGNALED
+				printf("Removing job with pid:  %dcommand: %s\n",pid_aux, current->command);
+				delete_job(jobList, current);
+			}
+		}
+
+
+		current = current->next;
+	}
+	unblock_SIGCHLD();
+
+}
 
 // -----------------------------------------------------------------------
 //                            MAIN
@@ -53,7 +95,10 @@ int main(void)
 	void intro();
 	intro(); /* show characters intro image */
 
-ignore_terminal_signals();
+	jobList = new_list("jobList");
+
+	ignore_terminal_signals();
+	signal(SIGCHLD, handler);
 	while (1)   /* Program terminates normally inside get_command() after ^D is typed*/
 	{
 
@@ -88,7 +133,7 @@ ignore_terminal_signals();
 			restore_terminal_signals();
 			setpgid(getpid(), getpid());
 			if(!background){
-						set_terminal(getpid());	//Como está en foreground asignamos terminal al grupo
+						set_terminal(getpid());	//Como está en foreground asignamos terminal al proceso
 				}
 			execvp(args[0],args);
 			printf("Error, command not found: %s\n",args[0]);
@@ -98,14 +143,33 @@ ignore_terminal_signals();
 		}
 		else if(background==0){
 			set_terminal(pid_fork);
-			waitpid(pid_fork,&status, WUNTRACED | WCONTINUED);
+			pid_wait = waitpid(pid_fork,&status, WUNTRACED | WCONTINUED);
 			set_terminal(getpid());
 			status_res = analyze_status(status, &info);
+
 			printf("Foreground pid: %d,command: %s, status: %s,info: %d\n",pid_fork,args[0],status_strings[status_res],info);
 			fflush(stdout);
+/*
+			if(status_res==SUSPENDED){
+				printf("Suspending job with pid: %d\n",pid_wait);
+				fflush(stdout);
+			}
+			if(info!=1){
+				printf("Foreground pid: %d,command: %s, status: %s,info: %d\n",pid_fork,args[0],status_strings[status_res],info);
+				fflush(stdout);
+			}
+			*/
+
 		}else{
 			printf("Background job running... pid: %d,command: %s\n", pid_fork, args[0]);
 			fflush(stdout);
+
+			/* Adding job to the list */
+			job * newJob = new_job(pid_fork, args[0], BACKGROUND);
+			block_SIGCHLD();
+			add_job(jobList, newJob);
+			unblock_SIGCHLD();
+
 		}
 	} // end while
 }
