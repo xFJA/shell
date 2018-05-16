@@ -161,7 +161,12 @@ int main(void)
 			fg_status_res = analyze_status(fg_status, &fg_info);
 
 			printf("Foreground pid: %d,command: %s, status: %s,info: %d\n",fg_pid,fgJob->command,status_strings[fg_status_res],fg_info);
-			fflush(stdout);
+
+			if(fg_status_res==SIGNALED || fg_status_res==EXITED){
+				delete_job(jobList, fgJob);
+					printf("Removing job with pid:  %d\n",fg_pid);
+				}
+
 
 			if(fg_status_res==SUSPENDED){ //change state if job is suspended
 				fgJob->state = STOPPED;
