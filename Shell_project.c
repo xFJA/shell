@@ -146,7 +146,7 @@ int main(void)
 			enum status fg_status_res;
 
 			if(args[1]!=NULL){ //command has an argument
-				fgJob = get_item_bypos(jobList, args[1]);
+				fgJob = get_item_bypos(jobList, atoi(args[1]));
 			}
 			else{ //first job from the list chosen
 				fgJob = get_item_bypos(jobList, 1);
@@ -171,6 +171,24 @@ int main(void)
 			continue;
 		}
 
+		/* BG COMMAND: change job from supended to background */
+
+		if(!strcmp(args[0],"bg")){
+			job * bg_job;
+			block_SIGCHLD();
+			if(args[1]!=NULL){
+				bg_job = get_item_bypos(jobList, atoi(args[1]));
+				killpg(bg_job->pgid, SIGCONT); //send signal to group to continue in bg
+			}
+			else{
+				printf("ERROR: POSITION IN THE JOB LIST IS REQUIRED\n");
+			}
+			unblock_SIGCHLD();
+			continue;
+		}
+
+
+
 
 
 		pid_fork = fork();
@@ -187,9 +205,9 @@ int main(void)
 				}
 			execvp(args[0],args);
 			printf("Error, command not found: %s\n",args[0]);
-			continue;
 			fflush(stdout);
 			exit(EXIT_FAILURE);
+			continue;
 		}
 		else if(background==0){
 			set_terminal(pid_fork);
