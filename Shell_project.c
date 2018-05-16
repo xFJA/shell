@@ -155,8 +155,7 @@ int main(void)
 			fgJob->state = FOREGROUND;
 			killpg(fg_pid, SIGCONT); //send signal to group to continue
 			set_terminal(fg_pid); //give terminal control to the job
-			int k = waitpid(fg_pid, &fg_status, WUNTRACED);
-			printf("%d\n",k );
+			waitpid(fg_pid, &fg_status, WUNTRACED);
 			set_terminal(getpid());
 			fg_status_res = analyze_status(fg_status, &fg_info);
 
