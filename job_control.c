@@ -17,7 +17,7 @@ Some code adapted from "Fundamentos de Sistemas Operativos", Silberschatz et al.
 
 // -----------------------------------------------------------------------
 //  get_command() reads in the next command line, separating it into distinct tokens
-//  using whitespace as delimiters. setup() sets the args parameter as a 
+//  using whitespace as delimiters. setup() sets the args parameter as a
 //  null-terminated string.
 // -----------------------------------------------------------------------
 
@@ -32,22 +32,22 @@ void get_command(char inputBuffer[], int size, char *args[],int *background)
 	*background=0;
 
 	/* read what the user enters on the command line */
-	length = read(STDIN_FILENO, inputBuffer, size);  
+	length = read(STDIN_FILENO, inputBuffer, size);
 
 	start = -1;
 	if (length == 0)
 	{
 		printf("\nBye\n");
 		exit(0);            /* ^d was entered, end of user command stream */
-	} 
+	}
 	if (length < 0){
 		perror("error reading the command");
 		exit(-1);           /* terminate with error code of -1 */
 	}
 
 	/* examine every character in the inputBuffer */
-	for (i=0;i<length;i++) 
-	{ 
+	for (i=0;i<length;i++)
+	{
 		switch (inputBuffer[i])
 		{
 		case ' ':
@@ -64,7 +64,7 @@ void get_command(char inputBuffer[], int size, char *args[],int *background)
 		case '\n':                 /* should be the final char examined */
 			if (start != -1)
 			{
-				args[ct] = &inputBuffer[start];     
+				args[ct] = &inputBuffer[start];
 				ct++;
 			}
 			inputBuffer[i] = '\0';
@@ -73,12 +73,18 @@ void get_command(char inputBuffer[], int size, char *args[],int *background)
 
 		default :             /* some other character */
 
-			if (inputBuffer[i] == '&') // background indicator
+			if (inputBuffer[i] == '&' || inputBuffer[i] == '+')
 			{
-				*background  = 1;
+				if(inputBuffer[i] == '&'){
+							*background  = 1; // background indicator
+				}
+				else{
+							*background  = 2; // Respawnable indicator
+				}
+
 				if (start != -1)
 				{
-					args[ct] = &inputBuffer[start];     
+					args[ct] = &inputBuffer[start];
 					ct++;
 				}
 				inputBuffer[i] = '\0';
@@ -88,15 +94,15 @@ void get_command(char inputBuffer[], int size, char *args[],int *background)
 			}
 			else if (start == -1) start = i;  // start of new argument
 		}  // end switch
-	}  // end for   
+	}  // end for
 	args[ct] = NULL; /* just in case the input line was > MAXLINE */
-} 
+}
 
 
 // -----------------------------------------------------------------------
 /* devuelve puntero a un nodo con sus valores inicializados,
 devuelve NULL si no pudo realizarse la reserva de memoria*/
-job * new_job(pid_t pid, const char * command, enum job_state state)
+job * new_job(pid_t pid, const char * command, enum job_state state, char *args[])
 {
 	job * aux;
 	aux=(job *) malloc(sizeof(job));
@@ -104,6 +110,15 @@ job * new_job(pid_t pid, const char * command, enum job_state state)
 	aux->state=state;
 	aux->command=strdup(command);
 	aux->next=NULL;
+
+	int k = 0;
+	if(args!=NULL){
+		while(args[k]!=NULL){
+			aux->args[k]=strdup(args[k]);
+			k++;
+		}
+		aux->args[k]=NULL; // Last char pointers array element must be NULL
+	}
 	return aux;
 }
 
@@ -119,7 +134,7 @@ void add_job (job * list, job * item)
 }
 
 // -----------------------------------------------------------------------
-/* elimina el elemento indicado de la lista 
+/* elimina el elemento indicado de la lista
 devuelve 0 si no pudo realizarse con exito */
 int delete_job(job * list, job * item)
 {
@@ -171,7 +186,7 @@ void print_list(job * list, void (*print)(job *))
 	int n=1;
 	job * aux=list;
 	printf("Contents of %s:\n",list->command);
-	while(aux->next!= NULL) 
+	while(aux->next!= NULL)
 	{
 		printf(" [%d] ",n);
 		print(aux->next);
@@ -184,7 +199,7 @@ void print_list(job * list, void (*print)(job *))
 /* interpretar valor status que devuelve wait */
 enum status analyze_status(int status, int *info)
 {
-	// el proceso se ha suspendido 
+	// el proceso se ha suspendido
 	if (WIFSTOPPED (status))
 	{
 		*info=WSTOPSIG(status);
@@ -192,21 +207,21 @@ enum status analyze_status(int status, int *info)
 	}
 	// el proceso se ha reanudado
     else if (WIFCONTINUED(status))
-    { 
-        *info=0; 
+    {
+        *info=0;
         return(CONTINUED);
     }
 	else
 	{
-		// el proceso ha terminado 
+		// el proceso ha terminado
 		if (WIFSIGNALED (status))
-		{ 
-			*info=WTERMSIG (status); 
+		{
+			*info=WTERMSIG (status);
 			return(SIGNALED);
 		}
 		else
-		{ 
-			*info=WEXITSTATUS(status); 
+		{
+			*info=WEXITSTATUS(status);
 			return(EXITED);
 		}
 	}
@@ -220,9 +235,9 @@ void terminal_signals(void (*func) (int))
 	signal (SIGINT,  func); // crtl+c interrupt tecleado en el terminal
 	signal (SIGQUIT, func); // ctrl+\ quit tecleado en el terminal
 	signal (SIGTSTP, func); // crtl+z Stop tecleado en el terminal
-	signal (SIGTTIN, func); // proceso en segundo plano quiere leer del terminal 
+	signal (SIGTTIN, func); // proceso en segundo plano quiere leer del terminal
 	signal (SIGTTOU, func); // proceso en segundo plano quiere escribir en el terminal
-}		
+}
 
 // -----------------------------------------------------------------------
 void block_signal(int signal, int block)
@@ -242,5 +257,3 @@ void block_signal(int signal, int block)
 		sigprocmask(SIG_UNBLOCK, &block_sigchld, NULL);
 	}
 }
-
-

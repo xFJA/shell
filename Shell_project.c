@@ -36,6 +36,40 @@ job * jobList; /* declaration of job list */
 
 #define ANSI_COLOR_RESET "\x1b[0m"
 
+
+
+// -----------------------------------------------------------------------
+//                            RESPAWNABLE
+// -----------------------------------------------------------------------
+
+void respawn(char *args[]){
+
+	int pid_fork = fork();
+
+	if (pid_fork<0){
+		printf("ERROR, en la creacion del hijo\n");
+		fflush(stdout);
+		exit(EXIT_FAILURE);
+	}
+	else if (pid_fork == 0){
+		restore_terminal_signals();
+		//setpgid(getpid(), getpid());
+		execvp(args[0],args);
+		printf("Error, command not found: %s\n",args[0]);
+		fflush(stdout);
+		exit(EXIT_FAILURE);
+	}
+	else{ //Respawnable
+		printf("Respawnable job running... pid: %d,command: %s\n", pid_fork, args[0]);
+		new_process_group(pid_fork);
+		/* Adding job to the list */
+		block_SIGCHLD();
+		job * newJob = new_job(pid_fork, args[0], RESPAWNABLE, args);
+		add_job(jobList, newJob);
+		unblock_SIGCHLD();
+	}
+}
+
 // -----------------------------------------------------------------------
 //                            HANDLER
 // -----------------------------------------------------------------------
@@ -45,12 +79,15 @@ void handler(int signum){
 	int info_aux;
 	enum status status_res_aux;
 	int status_aux;
-	job * current = jobList;
+	job * current = jobList->next;
 
 	/* Iterate entire list until find job */
 
 	block_SIGCHLD();
 	while(current!=NULL){
+
+		job * nextJob = current->next;
+
 		pid_aux = waitpid(current->pgid,&status_aux, WUNTRACED | WNOHANG | WCONTINUED);
 
 		if(pid_aux==current->pgid){ //child found
@@ -65,16 +102,21 @@ void handler(int signum){
 			}
 			else {//EXITED OR SIGNALED
 				printf("Removing job with pid:  %d, command: %s\n",pid_aux, current->command);
-				delete_job(jobList, current);
+				if(current->state == RESPAWNABLE){
+					respawn(current->args); //respawn the job
+				}
 			}
 		}
 
 
-		current = current->next;
+		current = nextJob;
 	}
 	unblock_SIGCHLD();
 
 }
+
+
+
 
 // -----------------------------------------------------------------------
 //                            MAIN
@@ -213,22 +255,16 @@ int main(void)
 			exit(EXIT_FAILURE);
 			continue;
 		}
-		else if(background==0){
-			set_terminal(pid_fork);
-			pid_wait = waitpid(pid_fork,&status, WUNTRACED | WCONTINUED);
-			set_terminal(getpid());
-			status_res = analyze_status(status, &info);
+		else if(background==2){ // respawnable
 
-			printf("Foreground pid: %d,command: %s, status: %s,info: %d\n",pid_fork,args[0],status_strings[status_res],info);
-			fflush(stdout);
+			printf("Respawnable job running... pid: %d,command: %s\n", pid_fork, args[0]);
 
-			/* Adding suspended job to jobList */
-			if(status_res==SUSPENDED){
-				block_SIGCHLD();
-				job * newJob = new_job(pid_fork, args[0], STOPPED);
-				add_job(jobList, newJob);
-				unblock_SIGCHLD();
-			}
+			/* Adding job to the list */
+			block_SIGCHLD();
+			job * newJob = new_job(pid_fork, args[0], RESPAWNABLE, args);
+			add_job(jobList, newJob);
+			unblock_SIGCHLD();
+
 			/*
 			if(info!=1){
 				printf("Foreground pid: %d,command: %s, status: %s,info: %d\n",pid_fork,args[0],status_strings[status_res],info);
@@ -236,16 +272,39 @@ int main(void)
 			}
 			*/
 
-		}else{
+		}else if (background==1){ //bg
 			printf("Background job running... pid: %d,command: %s\n", pid_fork, args[0]);
 			fflush(stdout);
 
 			/* Adding job to the list */
 			block_SIGCHLD();
-			job * newJob = new_job(pid_fork, args[0], BACKGROUND);
+			job * newJob = new_job(pid_fork, args[0], BACKGROUND, NULL);
 			add_job(jobList, newJob);
 			unblock_SIGCHLD();
 
+		}
+		else{ //fg
+
+			set_terminal(pid_fork);
+			pid_wait = waitpid(pid_fork,&status, WUNTRACED | WCONTINUED);
+			set_terminal(getpid());
+			status_res = analyze_status(status, &info);
+
+
+			/* Adding suspended job to jobList */
+			if(status_res==SUSPENDED){
+				block_SIGCHLD();
+				job * newJob = new_job(pid_fork, args[0], STOPPED, NULL);
+				add_job(jobList, newJob);
+				unblock_SIGCHLD();
+			}
+
+			if(info!=1){
+
+			printf("Foreground pid: %d,command: %s, status: %s,info: %d\n",pid_fork,args[0],status_strings[status_res],info);
+			fflush(stdout);
+
+		}
 		}
 	} // end while
 }
