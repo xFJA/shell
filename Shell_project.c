@@ -8,7 +8,7 @@ Dept. Arquitectura de Computadores - UMA
 Some code adapted from "Fundamentos de Sistemas Operativos", Silberschatz et al.
 
 To compile and run the program:
-   $ gcc Shell_project.c job_control.c -o Shell
+   $ gcc Shell_project.c job_control.c -o Shell -lpthread
    $ ./Shell
 	(then type ^D to exit program)
 
@@ -16,7 +16,9 @@ To compile and run the program:
 
 #include "job_control.h"   // remember to compile with module job_control.c
 #include <string.h>
+#include <signal.h>
 #include <unistd.h>
+#include <pthread.h>
 
 job * jobList; /* declaration of job list */
 
@@ -64,7 +66,7 @@ void respawn(char *args[]){
 		new_process_group(pid_fork);
 		/* Adding job to the list */
 		block_SIGCHLD();
-		job * newJob = new_job(pid_fork, args[0], RESPAWNABLE, args);
+		job * newJob = new_job(pid_fork, args[0], RESPAWNABLE, args, -1);
 		add_job(jobList, newJob);
 		unblock_SIGCHLD();
 	}
@@ -115,6 +117,43 @@ void handler(int signum){
 
 }
 
+// -----------------------------------------------------------------------
+//                            HANDLER FOR ALARM SIGNAL
+// -----------------------------------------------------------------------
+
+void alarm_handler(int signum){
+	job* current = jobList->next;
+	job* nextJob;
+
+	while(current!=NULL){
+		nextJob = current->next;
+		if(current->time_of_life==1){ //job must die unless it's a respawnable job
+				if(current->state == RESPAWNABLE){
+					respawn(current->args);
+				}
+				killpg(current->pgid, SIGKILL);
+				printf("Removing job with pid: %d, command: %s ,its time has expired...\n",current->pgid, current->command);
+				delete_job(jobList, current);
+		}
+		else if(current->time_of_life>1){ //job remaining time decrease in 1 second
+			current->time_of_life -= 1;
+		}
+		current = nextJob;
+	}
+}
+
+// -----------------------------------------------------------------------
+//                            START ROUTINE FOR THREAD
+// -----------------------------------------------------------------------
+
+/* throw signal and wait 1 second */
+void* alarm_start_routine(void* start_routine){
+	while(1){
+		alarm(1);
+		sleep(1);
+	}
+}
+
 
 
 
@@ -133,14 +172,22 @@ int main(void)
 	enum status status_res; /* status processed by analyze_status() */
 	int info;				/* info processed by analyze_status() */
 	char directory[1024]; /* current directory */
+	pthread_t time_thread;
 
+	/* create thread for time */
+	time_thread = pthread_create(&time_thread, NULL, alarm_start_routine, NULL); //thread has no atributtes
+
+	/* set handlers */
+		signal(SIGCHLD, handler);
+		signal(SIGALRM, alarm_handler);
+
+ 	/* show characters intro image */
 	void intro();
-	intro(); /* show characters intro image */
+	intro();
 
 	jobList = new_list("jobList");
 
 	ignore_terminal_signals();
-	signal(SIGCHLD, handler);
 	while (1)   /* Program terminates normally inside get_command() after ^D is typed*/
 	{
 
@@ -233,8 +280,87 @@ int main(void)
 			continue;
 		}
 
+		/* TIME-OUT COMMAND: when time run out the job finishes */
+
+		if(!strcmp(args[0], "time-out")){
+			if(args[1] == NULL || args[2] == NULL){
+				printf("Missing parameters: time of life or command to execute\n");
+				continue;
+			}
+
+			pid_fork = fork();
+			if (pid_fork<0){
+				printf("ERROR, en la creacion del hijo\n");
+				fflush(stdout);
+			  exit(EXIT_FAILURE);
+			}
+			else if (pid_fork == 0){
+				restore_terminal_signals();
+				setpgid(getpid(), getpid());
+				if(!background){
+							set_terminal(getpid());	//Como está en foreground asignamos terminal al proceso
+					}
+				execvp(args[2],args+2);
+				printf("Error, command not found: %s\n",args[2]);
+				fflush(stdout);
+				exit(EXIT_FAILURE);
+				continue;
+			}
+			else if(background==2){ // respawnable
+
+				printf("Respawnable job running... pid: %d,command: %s ,time of life: %s\n", pid_fork, args[2], args[1]);
+
+				/* Adding job to the list */
+				block_SIGCHLD();
+				job * newJob = new_job(pid_fork, args[2], RESPAWNABLE, args+2, atoi(args[1]));
+				add_job(jobList, newJob);
+				unblock_SIGCHLD();
+
+				/*
+				if(info!=1){
+					printf("Foreground pid: %d,command: %s, status: %s,info: %d\n",pid_fork,args[0],status_strings[status_res],info);
+					fflush(stdout);
+				}
+				*/
+
+			}else if (background==1){ //bg
+				printf("Background job running... pid: %d,command: %s ,time of life: %s\n", pid_fork, args[2], args[1]);
+				fflush(stdout);
+
+				/* Adding job to the list */
+				block_SIGCHLD();
+				job * newJob = new_job(pid_fork, args[2], BACKGROUND, NULL, atoi(args[1]));
+				add_job(jobList, newJob);
+				unblock_SIGCHLD();
+
+			}
+			else{ //fg
+
+				set_terminal(pid_fork);
+				job * newJob_time_out = new_job(pid_fork, args[2], STOPPED, NULL, atoi(args[1]));
+				add_job(jobList, newJob_time_out);
+				pid_wait = waitpid(pid_fork,&status, WUNTRACED | WCONTINUED);
+				set_terminal(getpid());
+				status_res = analyze_status(status, &info);
 
 
+				/* Adding suspended job to jobList */
+				if(status_res==SUSPENDED){
+					block_SIGCHLD();
+					job * newJob = new_job(pid_fork, args[2], STOPPED, NULL, 0);
+					add_job(jobList, newJob);
+					unblock_SIGCHLD();
+				}
+
+				if(info!=1)
+
+				printf("Foreground pid: %d,command: %s, status: %s,info: %d,time of life: %s\n",pid_fork,args[2],status_strings[status_res],info, args[1]);
+				fflush(stdout);
+
+
+			}
+		}
+		else{
 
 
 		pid_fork = fork();
@@ -261,7 +387,7 @@ int main(void)
 
 			/* Adding job to the list */
 			block_SIGCHLD();
-			job * newJob = new_job(pid_fork, args[0], RESPAWNABLE, args);
+			job * newJob = new_job(pid_fork, args[0], RESPAWNABLE, args, -1);
 			add_job(jobList, newJob);
 			unblock_SIGCHLD();
 
@@ -278,7 +404,7 @@ int main(void)
 
 			/* Adding job to the list */
 			block_SIGCHLD();
-			job * newJob = new_job(pid_fork, args[0], BACKGROUND, NULL);
+			job * newJob = new_job(pid_fork, args[0], BACKGROUND, NULL, -1);
 			add_job(jobList, newJob);
 			unblock_SIGCHLD();
 
@@ -294,18 +420,19 @@ int main(void)
 			/* Adding suspended job to jobList */
 			if(status_res==SUSPENDED){
 				block_SIGCHLD();
-				job * newJob = new_job(pid_fork, args[0], STOPPED, NULL);
+				job * newJob = new_job(pid_fork, args[0], STOPPED, NULL, -1);
 				add_job(jobList, newJob);
 				unblock_SIGCHLD();
 			}
 
-			if(info!=1){
+			if(info!=1)
 
 			printf("Foreground pid: %d,command: %s, status: %s,info: %d\n",pid_fork,args[0],status_strings[status_res],info);
 			fflush(stdout);
 
+
 		}
-		}
+	}
 	} // end while
 }
 

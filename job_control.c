@@ -102,7 +102,7 @@ void get_command(char inputBuffer[], int size, char *args[],int *background)
 // -----------------------------------------------------------------------
 /* devuelve puntero a un nodo con sus valores inicializados,
 devuelve NULL si no pudo realizarse la reserva de memoria*/
-job * new_job(pid_t pid, const char * command, enum job_state state, char *args[])
+job * new_job(pid_t pid, const char * command, enum job_state state, char *args[], int time_of_life)
 {
 	job * aux;
 	aux=(job *) malloc(sizeof(job));
@@ -119,6 +119,8 @@ job * new_job(pid_t pid, const char * command, enum job_state state, char *args[
 		}
 		aux->args[k]=NULL; // Last char pointers array element must be NULL
 	}
+
+	aux->time_of_life = time_of_life;
 	return aux;
 }
 
