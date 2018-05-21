@@ -107,6 +107,7 @@ void handler(int signum){
 				if(current->state == RESPAWNABLE){
 					respawn(current->args); //respawn the job
 				}
+				delete_job(jobList, current);
 			}
 		}
 
@@ -122,6 +123,7 @@ void handler(int signum){
 // -----------------------------------------------------------------------
 
 void alarm_handler(int signum){
+	block_SIGCHLD();
 	job* current = jobList->next;
 	job* nextJob;
 
@@ -140,6 +142,7 @@ void alarm_handler(int signum){
 		}
 		current = nextJob;
 	}
+	unblock_SIGCHLD();
 }
 
 // -----------------------------------------------------------------------
@@ -272,6 +275,7 @@ int main(void)
 			if(args[1]!=NULL){
 				bg_job = get_item_bypos(jobList, atoi(args[1]));
 				killpg(bg_job->pgid, SIGCONT); //send signal to group to continue in bg
+				bg_job->state = BACKGROUND;
 			}
 			else{
 				printf("ERROR: POSITION IN THE JOB LIST IS REQUIRED\n");
