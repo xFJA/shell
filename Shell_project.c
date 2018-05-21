@@ -40,6 +40,7 @@ job * jobList; /* declaration of job list */
 
 
 
+
 // -----------------------------------------------------------------------
 //                            RESPAWNABLE
 // -----------------------------------------------------------------------
@@ -104,7 +105,7 @@ void handler(int signum){
 			}
 			else {//EXITED OR SIGNALED
 				printf("Removing job with pid:  %d, command: %s\n",pid_aux, current->command);
-				if(current->state == RESPAWNABLE){
+				if(current->state == RESPAWNABLE && info_aux==0){
 					respawn(current->args); //respawn the job
 				}
 				delete_job(jobList, current);
@@ -130,18 +131,27 @@ void alarm_handler(int signum){
 	while(current!=NULL){
 		nextJob = current->next;
 		if(current->time_of_life==1){ //job must die unless it's a respawnable job
+
+		if(current->state == STOPPED){
+			delete_job(jobList, current);
+		}else{
 				if(current->state == RESPAWNABLE){
 					respawn(current->args);
 				}
 				killpg(current->pgid, SIGKILL);
 				printf("Removing job with pid: %d, command: %s ,its time has expired...\n",current->pgid, current->command);
 				delete_job(jobList, current);
-		}
+			}
+}
 		else if(current->time_of_life>1){ //job remaining time decrease in 1 second
 			current->time_of_life -= 1;
 		}
+
+
+
 		current = nextJob;
 	}
+
 	unblock_SIGCHLD();
 }
 
@@ -183,6 +193,7 @@ int main(void)
 	/* set handlers */
 		signal(SIGCHLD, handler);
 		signal(SIGALRM, alarm_handler);
+
 
  	/* show characters intro image */
 	void intro();
